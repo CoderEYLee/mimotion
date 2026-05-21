@@ -1,0 +1,4 @@
+{
+  // 消除 Python 扩展对 .env 文件的警告（本项目为 Node.js，无需 Python 环境注入）
+  "python.terminal.useEnvFile": false
+}
