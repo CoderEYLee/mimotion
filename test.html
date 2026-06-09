@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>刷步数</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    button {
+      padding: 15px 30px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 5px;
+    }
+    button:hover { background-color: #45a049; }
+    #output { margin-top: 20px; white-space: pre-wrap; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>小米运动刷步数</h1>
+  <button id="runBtn">执行刷步数</button>
+  <div id="output"></div>
+
+  <script>
+    // 捕获 console.log 输出到页面
+    const output = document.getElementById('output');
+    const originalLog = console.log;
+    console.log = function(...args) {
+      originalLog.apply(console, args);
+      output.textContent += args.join(' ') + '\n';
+    };
+    console.error = function(...args) {
+      originalLog.apply(console, args);
+      output.textContent += 'ERROR: ' + args.join(' ') + '\n';
+    };
+
+    // 点击按钮执行
+    document.getElementById('runBtn').addEventListener('click', async function() {
+      output.textContent = '开始执行...\n\n';
+      try {
+        await execute();
+        output.textContent += '\n执行完成!';
+      } catch (e) {
+        output.textContent += '\n执行异常: ' + e.message;
+        console.error(e);
+      }
+    });
+  </script>
+  <script src="mimotion_browser.js"></script>
+</body>
+</html>
