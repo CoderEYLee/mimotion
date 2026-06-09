@@ -24,12 +24,14 @@ class PushConfig:
                  push_plus_hour=None,
                  push_plus_max=30,
                  push_wechat_webhook_key=None,
+                 push_feishu_webhook_key=None,
                  telegram_bot_token=None,
                  telegram_chat_id=None):
         self.push_plus_token = push_plus_token
         self.push_plus_hour = push_plus_hour
         self.push_plus_max = int(push_plus_max) if push_plus_max else 30
         self.push_wechat_webhook_key = push_wechat_webhook_key
+        self.push_feishu_webhook_key = push_feishu_webhook_key
         self.telegram_bot_token = telegram_bot_token
         self.telegram_chat_id = telegram_chat_id
 
@@ -101,6 +103,39 @@ def push_wechat_webhook(key, title, content):
 def buildWeChatContent(title, content) -> str:
     return f"""# {title}\n{content}"""
 
+def push_feishu_webhook(key, title, content):
+    """
+    推送飞书通知，WebHook方式，需要注册飞书并配置机器人到对应的推送群。然后提取对应的key
+
+    :param key: WebHook机器人的key
+    :param title: 推送标题
+    :param content: 推送内容，虽然支持markdown，但是在使用飞书时，消息不能被完整展示，直接使用纯文本效果会更好
+    :return:
+    """
+
+    requestUrl = f"https://open.feishu.cn/open-apis/bot/v2/hook/{key}"
+
+    payload = {
+        "msg_type": "text",
+        "content": {
+            "text": f"""# {title}\n{content}"""
+        }
+    }
+
+    try:
+        response = requests.post(requestUrl, json=payload)
+        if response.status_code == 200:
+            json_res = response.json()
+            if json_res.get('StatusCode') == 0:
+                print(f"飞书推送完毕：{json_res['msg']}")
+            else:
+                print(f"飞书推送失败：{json_res.get('msg', '未知错误')}")
+        else:
+            print("飞书推送失败")
+    except requests.exceptions.RequestException as e:
+        print(f"飞书推送异常: {e}")
+    except Exception as e:
+        print(f"飞书推送发生未知异常: {e}")
 
 def push_telegram_bot(bot_token, chat_id, content):
     """
@@ -142,6 +177,7 @@ def push_results(exec_results, summary, config: PushConfig):
     push_to_push_plus(exec_results, summary, config)
     push_to_wechat_webhook(exec_results, summary, config)
     push_to_telegram_bot(exec_results, summary, config)
+    push_to_feishu_webhook(exec_results, summary, config)
 
 
 def not_in_push_time_range(config: PushConfig) -> bool:
@@ -239,3 +275,22 @@ def push_to_telegram_bot(exec_results, summary, config: PushConfig):
         push_telegram_bot(config.telegram_bot_token, config.telegram_chat_id, html)
     else:
         print("未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 跳过telegram推送")
+
+def push_to_feishu_webhook(exec_results, summary, config: PushConfig):
+    """推送到飞书"""
+    # 判断是否需要飞书推送
+    if config.push_feishu_webhook_key and config.push_feishu_webhook_key != '' and config.push_feishu_webhook_key != 'NO':
+
+        content = f'## {summary}'
+        if len(exec_results) >= config.push_plus_max:
+            content += '\n- 账号数量过多，详细情况请前往github actions中查看'
+        else:
+            for exec_result in exec_results:
+                success = exec_result['success']
+                if success is not None and success is True:
+                    content += f'\n- 账号：{exec_result["user"]}刷步数成功，接口返回：{exec_result["msg"]}'
+                else:
+                    content += f'\n- 账号：{exec_result["user"]}刷步数失败，失败原因：{exec_result["msg"]}'
+        push_feishu_webhook(config.push_feishu_webhook_key, f"{format_now()} 刷步数通知", content)
+    else:
+        print("未配置 FEISHU_WEBHOOK_KEY 跳过微信推送")

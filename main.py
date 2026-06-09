@@ -27,7 +27,7 @@ def get_min_max_by_time(hour=None, minute=None):
         hour = time_bj.hour
     if minute is None:
         minute = time_bj.minute
-    time_rate = min((hour * 60 + minute) / (22 * 60), 1)
+    time_rate = min((hour * 60 + minute) / (16 * 60), 1)
     min_step = get_int_value_default(config, 'MIN_STEP', 18000)
     max_step = get_int_value_default(config, 'MAX_STEP', 25000)
     return int(time_rate * min_step), int(time_rate * max_step)
@@ -184,7 +184,29 @@ class MiMotionRunner:
 
         step = str(random.randint(min_step, max_step))
         self.log_str += f"已设置为随机步数范围({min_step}~{max_step}) 随机值:{step}\n"
+
+        # 跨天检测 & 步数递增检测
+        token_info = user_tokens.get(self.user)
+        last_step = token_info.get("last_step") if token_info else None
+        last_step_time = token_info.get("last_step_time") if token_info else None
+
+        if last_step and last_step_time:
+            today = datetime.now().strftime("%Y-%m-%d")
+            last_date = datetime.fromtimestamp(int(last_step_time) / 1000).strftime("%Y-%m-%d")
+            if today == last_date:
+                # 同一天：步数必须大于上次
+                if int(step) <= int(last_step):
+                    msg = f"今日已提交 {last_step} 步，本次随机 {step} 步未超过，跳过"
+                    self.log_str += msg + "\n"
+                    return msg, False
+                print(f"[Runner] 今日已提交 {last_step} 步，本次 {step} 步 > 上次，继续执行")
+            else:
+                print(f"[Runner] 上次提交: {last_date} {last_step} 步，已跨天，继续执行")
+
         ok, msg = zeppHelper.post_fake_brand_data(step, app_token, self.user_id)
+        if ok and self.user in user_tokens:
+            user_tokens[self.user]["last_step"] = step
+            user_tokens[self.user]["last_step_time"] = get_time()
         return f"修改步数（{step}）[" + msg + "]", ok
 
 
@@ -302,6 +324,7 @@ if __name__ == "__main__":
             push_plus_hour=config.get('PUSH_PLUS_HOUR'),
             push_plus_max=get_int_value_default(config, 'PUSH_PLUS_MAX', 30),
             push_wechat_webhook_key=config.get('PUSH_WECHAT_WEBHOOK_KEY'),
+            push_feishu_webhook_key=config.get('PUSH_FEISHU_WEBHOOK_KEY'),
             telegram_bot_token=config.get('TELEGRAM_BOT_TOKEN'),
             telegram_chat_id=config.get('TELEGRAM_CHAT_ID')
         )
