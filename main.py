@@ -21,15 +21,23 @@ def get_int_value_default(_config: dict, _key, default):
     return int(_config.get(_key))
 
 
+# 读取账号级int配置：缺失时回退内置默认值
+def get_account_int(account, key, default):
+    val = account.get(key) if account else None
+    if val is None or val == '':
+        return default
+    return int(val)
+
+
 # 获取当前时间对应的最大和最小步数
-def get_min_max_by_time(hour=None, minute=None):
+def get_min_max_by_time(hour=None, minute=None, account=None):
     if hour is None:
         hour = time_bj.hour
     if minute is None:
         minute = time_bj.minute
     time_rate = min((hour * 60 + minute) / (16 * 60), 1)
-    min_step = get_int_value_default(config, 'MIN_STEP', 18000)
-    max_step = get_int_value_default(config, 'MAX_STEP', 25000)
+    min_step = get_account_int(account, 'MIN_STEP', 18000)
+    max_step = get_account_int(account, 'MAX_STEP', 25000)
     return int(time_rate * min_step), int(time_rate * max_step)
 
 
@@ -210,14 +218,17 @@ class MiMotionRunner:
         return f"修改步数（{step}）[" + msg + "]", ok
 
 
-def run_single_account(total, idx, user_mi, passwd_mi):
+def run_single_account(total, idx, account):
     idx_info = ""
     if idx is not None:
         idx_info = f"[{idx + 1}/{total}]"
+    user_mi = account.get('USER')
+    passwd_mi = account.get('PWD')
     log_str = f"[{format_now()}]\n{idx_info}账号：{desensitize_user_name(user_mi)}\n"
     try:
         runner = MiMotionRunner(user_mi, passwd_mi)
-        exec_msg, success = runner.login_and_post_step(min_step, max_step)
+        account_min, account_max = get_min_max_by_time(account=account)
+        exec_msg, success = runner.login_and_post_step(account_min, account_max)
         log_str += runner.log_str
         log_str += f'{exec_msg}\n'
         exec_result = {"user": user_mi, "success": success,
@@ -232,37 +243,30 @@ def run_single_account(total, idx, user_mi, passwd_mi):
 
 
 def execute():
-    user_list = users.split('#')
-    passwd_list = passwords.split('#')
+    total = len(accounts)
     exec_results = []
-    if len(user_list) == len(passwd_list):
-        idx, total = 0, len(user_list)
-        if use_concurrent:
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                exec_results = executor.map(lambda x: run_single_account(total, x[0], *x[1]),
-                                            enumerate(zip(user_list, passwd_list)))
-        else:
-            for user_mi, passwd_mi in zip(user_list, passwd_list):
-                exec_results.append(run_single_account(total, idx, user_mi, passwd_mi))
-                idx += 1
-                if idx < total:
-                    # 每个账号之间间隔一定时间请求一次，避免接口请求过于频繁导致异常
-                    time.sleep(sleep_seconds)
-        if encrypt_support:
-            persist_user_tokens()
-        success_count = 0
-        push_results = []
-        for result in exec_results:
-            push_results.append(result)
-            if result['success'] is True:
-                success_count += 1
-        summary = f"\nGithub 执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
-        print(summary)
-        push_util.push_results(push_results, summary, push_config)
+    if use_concurrent:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            exec_results = list(executor.map(lambda x: run_single_account(total, x[0], x[1]),
+                                             enumerate(accounts)))
     else:
-        print(f"账号数长度[{len(user_list)}]和密码数长度[{len(passwd_list)}]不匹配，跳过执行")
-        exit(1)
+        for idx, account in enumerate(accounts):
+            exec_results.append(run_single_account(total, idx, account))
+            if idx < total - 1:
+                # 每个账号之间间隔一定时间请求一次，避免接口请求过于频繁导致异常
+                time.sleep(sleep_seconds)
+    if encrypt_support:
+        persist_user_tokens()
+    success_count = 0
+    push_results = []
+    for result in exec_results:
+        push_results.append(result)
+        if result['success'] is True:
+            success_count += 1
+    summary = f"\nGithub 执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
+    print(summary)
+    push_util.push_results(push_results, summary, push_config)
 
 
 def prepare_user_tokens() -> dict:
@@ -332,12 +336,14 @@ if __name__ == "__main__":
         if sleep_seconds is None or sleep_seconds == '':
             sleep_seconds = 5
         sleep_seconds = float(sleep_seconds)
-        users = config.get('USER')
-        passwords = config.get('PWD')
-        if users is None or passwords is None:
-            print("未正确配置账号密码，无法执行")
+        accounts = config.get('ACCOUNTS')
+        if not isinstance(accounts, list) or len(accounts) == 0:
+            print("未正确配置 ACCOUNTS 账号数组，无法执行")
             exit(1)
-        min_step, max_step = get_min_max_by_time()
+        for i, acc in enumerate(accounts):
+            if not isinstance(acc, dict) or not acc.get('USER') or not acc.get('PWD'):
+                print(f"ACCOUNTS[{i}] 配置不正确，必须包含 USER 和 PWD")
+                exit(1)
         use_concurrent = config.get('USE_CONCURRENT')
         if use_concurrent is not None and use_concurrent == 'True':
             use_concurrent = True
