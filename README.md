@@ -74,7 +74,8 @@
         "USER": "abcxxx@xx.com",
         "PWD": "password",
         "MIN_STEP": "18000",
-        "MAX_STEP": "25000"
+        "MAX_STEP": "25000",
+        "EXPIRE_DATE": "2025-12-31"
       }
     ],
     "PUSH_PLUS_TOKEN": "",
@@ -85,17 +86,19 @@
     "TELEGRAM_BOT_TOKEN": "",
     "TELEGRAM_CHAT_ID": "",
     "SLEEP_GAP": "5",
-    "USE_CONCURRENT": "False"
+    "USE_CONCURRENT": "False",
+    "PUSH_USER_FULL_NAME": "False"
   }
   ```
 
   | 字段名                     | 格式                                                                                                             |
   |-------------------------|----------------------------------------------------------------------------------------------------------------|
-  | ACCOUNTS                | 账号数组，每个元素包含一个账号的配置（USER/PWD，可选 MIN_STEP/MAX_STEP）                                                          |
+  | ACCOUNTS                | 账号数组，每个元素包含一个账号的配置（USER/PWD，可选 MIN_STEP/MAX_STEP/EXPIRE_DATE）                                                  |
   | USER                    | 小米运动登录账号，仅支持小米运动账号对应的手机号或邮箱，不支持小米账号                                                                            |
   | PWD                     | 小米运动登录密码，仅支持小米运动账号对应的密码                                                                                        |
   | MIN_STEP                | 最小步数，配置在账号对象内，未配置时默认 18000                                                                                     |
   | MAX_STEP                | 最大步数，最大步数和最小步数随机范围随着时间线性增加，北京时间16点达到最大值。配置在账号对象内，未配置时默认 25000                                                  |
+  | EXPIRE_DATE             | 账号过期日期，格式 `YYYY-MM-DD`（如 `2025-12-31`），按北京时间判断。到了过期当天即跳过该账号，不再刷步数；不配置或格式不合法时不生效。过期账号在推送通知中单独归类为"已过期"            |
   | PUSH_PLUS_TOKEN         | 推送加的个人token,申请地址[pushplus](https://www.pushplus.plus/push1.html)，工作流执行完成后推送每个账号的执行状态信息，如没有则不要填写                |
   | PUSH_PLUS_HOUR          | 限制只在某个整点进行pushplus的推送，值为整数，比如设置21，则只在北京时间21点XX分执行时才进行pushplus的消息推送。如不设置或值非数字则每次执行后都会进行推送                       |
   | PUSH_WECHAT_WEBHOOK_KEY | 企业微信推送通知的key，企业微信webhook机器人推送全地址为：https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key={机器人的key}，这里配置{机器人的key} |
@@ -105,10 +108,11 @@
   | TELEGRAM_CHAT_ID        | 设置telegram的chatId，需要同时配置TELEGRAM_BOT_TOKEN，否则无法执行推送。关于这两个值如何获取，请前往官网查看。                                        |
   | SLEEP_GAP               | 多账号执行间隔，单位秒，如果账号比较多可以设置的短一点，默认为5秒                                                                              |
   | USE_CONCURRENT          | 是否使用多线程，实验性功能，未测试是否有效。账号多的可以试试，将它设置为True即可，启用后 `SLEEP_GAP` 将不再生效                                               |
+  | PUSH_USER_FULL_NAME     | 推送通知中账号是否显示完整明文。默认 `False` 脱敏显示（短账号保留首尾各 1/3，长账号保留前3后4，例如 `138****8000`、`abc****@xx.com`）；设置为 `True` 时显示完整账号                |
 
 ### 三、多账户设置(如用不上请忽略)
 
-- 多账户在 `ACCOUNTS` 数组中添加多个账号对象即可，每个账号可以单独配置 `USER`/`PWD`，以及可选的 `MIN_STEP`/`MAX_STEP`（不配置则使用内置默认 18000/25000）
+- 多账户在 `ACCOUNTS` 数组中添加多个账号对象即可，每个账号可以单独配置 `USER`/`PWD`，以及可选的 `MIN_STEP`/`MAX_STEP`/`EXPIRE_DATE`（不配置则使用内置默认 18000/25000，不配置 `EXPIRE_DATE` 则不限制过期）
 - 理论上账户数量不受限制，但是实际要看github actions的资源和华米接口是否有限制，pushplus消息内容应该也有最大长度限制，反正具体上限请自行测试
 
 #### 例如
@@ -124,7 +128,8 @@
       "USER": "13800138001",
       "PWD": "abcqwe2",
       "MIN_STEP": "15000",
-      "MAX_STEP": "20000"
+      "MAX_STEP": "20000",
+      "EXPIRE_DATE": "2025-12-31"
     }
   ],
   "PUSH_PLUS_TOKEN": "",

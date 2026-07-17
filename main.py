@@ -218,6 +218,20 @@ class MiMotionRunner:
         return f"修改步数（{step}）[" + msg + "]", ok
 
 
+def is_account_expired(account, now_bj) -> bool:
+    expire_date = account.get('EXPIRE_DATE') if isinstance(account, dict) else None
+    if not expire_date:
+        return False
+    try:
+        # 统一按北京时间日期判断，格式 YYYY-MM-DD，过期当天即跳过
+        expire_dt = datetime.strptime(str(expire_date).strip(), "%Y-%m-%d")
+    except (ValueError, TypeError):
+        # 格式不合法时不视为过期，继续执行账号，避免误跳过
+        print(f"EXPIRE_DATE 格式不正确({expire_date})，忽略过期检查")
+        return False
+    return now_bj.date() >= expire_dt.date()
+
+
 def run_single_account(total, idx, account):
     idx_info = ""
     if idx is not None:
@@ -225,6 +239,13 @@ def run_single_account(total, idx, account):
     user_mi = account.get('USER')
     passwd_mi = account.get('PWD')
     log_str = f"[{format_now()}]\n{idx_info}账号：{desensitize_user_name(user_mi)}\n"
+    # 过期检查：超过 EXPIRE_DATE 当天即跳过该账号
+    if is_account_expired(account, time_bj):
+        expire_date = account.get('EXPIRE_DATE')
+        msg = f"账号已过期(过期时间: {expire_date})，跳过执行"
+        log_str += msg + "\n"
+        print(log_str)
+        return {"user": user_mi, "success": False, "expired": True, "msg": msg}
     try:
         runner = MiMotionRunner(user_mi, passwd_mi)
         account_min, account_max = get_min_max_by_time(account=account)
@@ -259,12 +280,16 @@ def execute():
     if encrypt_support:
         persist_user_tokens()
     success_count = 0
+    expired_count = 0
     push_results = []
     for result in exec_results:
         push_results.append(result)
-        if result['success'] is True:
+        if result.get('expired') is True:
+            expired_count += 1
+        elif result['success'] is True:
             success_count += 1
-    summary = f"\nGithub 执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
+    failed_count = total - success_count - expired_count
+    summary = f"\nGithub 执行账号总数{total}，成功：{success_count}，失败：{failed_count}，已过期：{expired_count}"
     print(summary)
     push_util.push_results(push_results, summary, push_config)
 
@@ -330,7 +355,8 @@ if __name__ == "__main__":
             push_wechat_webhook_key=config.get('PUSH_WECHAT_WEBHOOK_KEY'),
             push_feishu_webhook_key=config.get('PUSH_FEISHU_WEBHOOK_KEY'),
             telegram_bot_token=config.get('TELEGRAM_BOT_TOKEN'),
-            telegram_chat_id=config.get('TELEGRAM_CHAT_ID')
+            telegram_chat_id=config.get('TELEGRAM_CHAT_ID'),
+            push_user_full_name=config.get('PUSH_USER_FULL_NAME')
         )
         sleep_seconds = config.get('SLEEP_GAP')
         if sleep_seconds is None or sleep_seconds == '':

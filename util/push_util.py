@@ -2,6 +2,7 @@ import json
 
 import requests
 from datetime import datetime
+import math
 import pytz
 
 
@@ -16,6 +17,24 @@ def format_now():
     return get_beijing_time().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def desensitize_user_name(user):
+    """账号脱敏：短账号保留首尾各 1/3，长账号保留前3后4"""
+    if not user:
+        return user
+    user = str(user)
+    if len(user) <= 8:
+        ln = max(math.floor(len(user) / 3), 1)
+        return f'{user[:ln]}***{user[-ln:]}'
+    return f'{user[:3]}****{user[-4:]}'
+
+
+def display_user(user, config: 'PushConfig'):
+    """根据推送配置决定是否脱敏展示账号"""
+    if config.push_user_full_name is True:
+        return user
+    return desensitize_user_name(user)
+
+
 class PushConfig:
     """推送配置类"""
 
@@ -26,7 +45,8 @@ class PushConfig:
                  push_wechat_webhook_key=None,
                  push_feishu_webhook_key=None,
                  telegram_bot_token=None,
-                 telegram_chat_id=None):
+                 telegram_chat_id=None,
+                 push_user_full_name=False):
         self.push_plus_token = push_plus_token
         self.push_plus_hour = push_plus_hour
         self.push_plus_max = int(push_plus_max) if push_plus_max else 30
@@ -34,6 +54,16 @@ class PushConfig:
         self.push_feishu_webhook_key = push_feishu_webhook_key
         self.telegram_bot_token = telegram_bot_token
         self.telegram_chat_id = telegram_chat_id
+        # 推送中账号是否显示完整明文，默认 False 脱敏
+        self.push_user_full_name = self._parse_bool(push_user_full_name)
+
+    @staticmethod
+    def _parse_bool(val):
+        if isinstance(val, bool):
+            return val
+        if val is None:
+            return False
+        return str(val).strip().lower() == 'true'
 
 
 def push_plus(token, title, content):
@@ -226,11 +256,15 @@ def push_to_push_plus(exec_results, summary, config: PushConfig):
         else:
             html += '<ul>'
             for exec_result in exec_results:
+                user_display = display_user(exec_result["user"], config)
+                if exec_result.get('expired') is True:
+                    html += f'<li><span>账号：{user_display}</span>已过期，{exec_result["msg"]}</li>'
+                    continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    html += f'<li><span>账号：{exec_result["user"]}</span>刷步数成功，接口返回：{exec_result["msg"]}</li>'
+                    html += f'<li><span>账号：{user_display}</span>刷步数成功，接口返回：{exec_result["msg"]}</li>'
                 else:
-                    html += f'<li><span>账号：{exec_result["user"]}</span>刷步数失败，失败原因：{exec_result["msg"]}</li>'
+                    html += f'<li><span>账号：{user_display}</span>刷步数失败，失败原因：{exec_result["msg"]}</li>'
             html += '</ul>'
         push_plus(config.push_plus_token, f"{format_now()} 刷步数通知", html)
     else:
@@ -247,11 +281,15 @@ def push_to_wechat_webhook(exec_results, summary, config: PushConfig):
             content += '\n- 账号数量过多，详细情况请前往github actions中查看'
         else:
             for exec_result in exec_results:
+                user_display = display_user(exec_result["user"], config)
+                if exec_result.get('expired') is True:
+                    content += f'\n- 账号：{user_display}已过期，{exec_result["msg"]}'
+                    continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    content += f'\n- 账号：{exec_result["user"]}刷步数成功，接口返回：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
                 else:
-                    content += f'\n- 账号：{exec_result["user"]}刷步数失败，失败原因：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
         push_wechat_webhook(config.push_wechat_webhook_key, f"{format_now()} 刷步数通知", content)
     else:
         print("未配置 WECHAT_WEBHOOK_KEY 跳过微信推送")
@@ -267,11 +305,15 @@ def push_to_telegram_bot(exec_results, summary, config: PushConfig):
             html += '<blockquote>账号数量过多，详细情况请前往github actions中查看</blockquote>'
         else:
             for exec_result in exec_results:
+                user_display = display_user(exec_result["user"], config)
+                if exec_result.get('expired') is True:
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>已过期，<b>{exec_result["msg"]}</b></pre>'
+                    continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    html += f'<pre><blockquote>账号：{exec_result["user"]}</blockquote>刷步数成功，接口返回：<b>{exec_result["msg"]}</b></pre>'
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数成功，接口返回：<b>{exec_result["msg"]}</b></pre>'
                 else:
-                    html += f'<pre><blockquote>账号：{exec_result["user"]}</blockquote>刷步数失败，失败原因：<b>{exec_result["msg"]}</b></pre>'
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数失败，失败原因：<b>{exec_result["msg"]}</b></pre>'
         push_telegram_bot(config.telegram_bot_token, config.telegram_chat_id, html)
     else:
         print("未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 跳过telegram推送")
@@ -286,11 +328,15 @@ def push_to_feishu_webhook(exec_results, summary, config: PushConfig):
             content += '\n- 账号数量过多，详细情况请前往github actions中查看'
         else:
             for exec_result in exec_results:
+                user_display = display_user(exec_result["user"], config)
+                if exec_result.get('expired') is True:
+                    content += f'\n- 账号：{user_display}已过期，{exec_result["msg"]}'
+                    continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    content += f'\n- 账号：{exec_result["user"]}刷步数成功，接口返回：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
                 else:
-                    content += f'\n- 账号：{exec_result["user"]}刷步数失败，失败原因：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
         push_feishu_webhook(config.push_feishu_webhook_key, f"{format_now()} 刷步数通知", content)
     else:
         print("未配置 FEISHU_WEBHOOK_KEY 跳过微信推送")
