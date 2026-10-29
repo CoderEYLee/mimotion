@@ -1,0 +1,36 @@
+version: '1.0'
+name: add_step
+displayName: 步数
+triggers:
+  trigger: auto
+  schedule:
+    - cron: '* * 8-16 * * ? *'
+stages:
+  - name: stage-3a1e4d55
+    displayName: 未命名
+    strategy: naturally
+    trigger: auto
+    executor: []
+    steps:
+      - step: ut@nodejs
+        name: addstep_nodejs
+        displayName: 刷步
+        nodeVersion: 24.5.0
+        commands:
+          - '# 设置NPM源，提升安装速度'
+          - npm config set registry https://registry.npmmirror.com
+          - '# 在这里输入测试命令'
+          - node mimotion_gitee.js
+          - ''
+          - ''
+        report:
+          path: mochawesome-report
+          file: mochawesome.json
+          index: mochawesome.html
+        checkpoints: []
+        caches:
+          - ~/.npm
+          - ~/.yarn
+        notify: []
+        strategy:
+          retry: '0'
