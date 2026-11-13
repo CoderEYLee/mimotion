@@ -17,6 +17,20 @@ def format_now():
     return get_beijing_time().strftime("%Y-%m-%d %H:%M:%S")
 
 
+NOTIFY_HEADING = "github执行步数通知"
+NOTIFY_SOURCE = "来源：https://github.com/CoderEYLee/mimotion"
+
+
+def notification_title():
+    """推送标题：时间单独一行，下一行是通知名称"""
+    return f"{format_now()}\n{NOTIFY_HEADING}"
+
+
+def append_notify_source(content):
+    """在推送正文末尾加上来源链接"""
+    return f"{content.rstrip()}\n{NOTIFY_SOURCE}"
+
+
 def desensitize_user_name(user):
     """账号脱敏：短账号保留首尾各 1/3，长账号保留前3后4"""
     if not user:
@@ -131,7 +145,7 @@ def push_wechat_webhook(key, title, content):
 
 
 def buildWeChatContent(title, content) -> str:
-    return f"""# {title}\n{content}"""
+    return f"""{title}\n{content}"""
 
 def push_feishu_webhook(key, title, content):
     """
@@ -148,7 +162,7 @@ def push_feishu_webhook(key, title, content):
     payload = {
         "msg_type": "text",
         "content": {
-            "text": f"""# {title}\n{content}"""
+            "text": f"""{title}\n{content}"""
         }
     }
 
@@ -250,7 +264,7 @@ def push_to_push_plus(exec_results, summary, config: PushConfig):
     """推送到PushPlus"""
     # 判断是否需要pushplus推送
     if config.push_plus_token and config.push_plus_token != '' and config.push_plus_token != 'NO':
-        html = f'<div>{summary}</div>'
+        html = f'<div>{format_now()}</div><div>{NOTIFY_HEADING}</div><div>{summary}</div>'
         if len(exec_results) >= config.push_plus_max:
             html += '<div>账号数量过多，详细情况请前往github actions中查看</div>'
         else:
@@ -266,7 +280,8 @@ def push_to_push_plus(exec_results, summary, config: PushConfig):
                 else:
                     html += f'<li><span>账号：{user_display}</span>刷步数失败，失败原因：{exec_result["msg"]}</li>'
             html += '</ul>'
-        push_plus(config.push_plus_token, f"{format_now()} 刷步数通知", html)
+        html += f'<div>{NOTIFY_SOURCE}</div>'
+        push_plus(config.push_plus_token, NOTIFY_HEADING, html)
     else:
         print("未配置 PUSH_PLUS_TOKEN 跳过PUSHPLUS推送")
 
@@ -276,7 +291,7 @@ def push_to_wechat_webhook(exec_results, summary, config: PushConfig):
     # 判断是否需要微信推送
     if config.push_wechat_webhook_key and config.push_wechat_webhook_key != '' and config.push_wechat_webhook_key != 'NO':
 
-        content = f'## {summary}'
+        content = f'{summary}'
         if len(exec_results) >= config.push_plus_max:
             content += '\n- 账号数量过多，详细情况请前往github actions中查看'
         else:
@@ -290,7 +305,8 @@ def push_to_wechat_webhook(exec_results, summary, config: PushConfig):
                     content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
                 else:
                     content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
-        push_wechat_webhook(config.push_wechat_webhook_key, f"{format_now()} 刷步数通知", content)
+        content = append_notify_source(content)
+        push_wechat_webhook(config.push_wechat_webhook_key, notification_title(), content)
     else:
         print("未配置 WECHAT_WEBHOOK_KEY 跳过微信推送")
 
@@ -300,7 +316,7 @@ def push_to_telegram_bot(exec_results, summary, config: PushConfig):
     # 判断是否需要telegram推送
     if (config.telegram_bot_token and config.telegram_bot_token != '' and config.telegram_bot_token != 'NO' and
             config.telegram_chat_id and config.telegram_chat_id != ''):
-        html = f'<b>{summary}</b>'
+        html = f'{notification_title()}\n<b>{summary.strip()}</b>'
         if len(exec_results) >= config.push_plus_max:
             html += '<blockquote>账号数量过多，详细情况请前往github actions中查看</blockquote>'
         else:
@@ -314,6 +330,7 @@ def push_to_telegram_bot(exec_results, summary, config: PushConfig):
                     html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数成功，接口返回：<b>{exec_result["msg"]}</b></pre>'
                 else:
                     html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数失败，失败原因：<b>{exec_result["msg"]}</b></pre>'
+        html = append_notify_source(html)
         push_telegram_bot(config.telegram_bot_token, config.telegram_chat_id, html)
     else:
         print("未配置 TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 跳过telegram推送")
@@ -323,7 +340,7 @@ def push_to_feishu_webhook(exec_results, summary, config: PushConfig):
     # 判断是否需要飞书推送
     if config.push_feishu_webhook_key and config.push_feishu_webhook_key != '' and config.push_feishu_webhook_key != 'NO':
 
-        content = f'## {summary}'
+        content = f'{summary}'
         if len(exec_results) >= config.push_plus_max:
             content += '\n- 账号数量过多，详细情况请前往github actions中查看'
         else:
@@ -337,6 +354,7 @@ def push_to_feishu_webhook(exec_results, summary, config: PushConfig):
                     content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
                 else:
                     content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
-        push_feishu_webhook(config.push_feishu_webhook_key, f"{format_now()} 刷步数通知", content)
+        content = append_notify_source(content)
+        push_feishu_webhook(config.push_feishu_webhook_key, notification_title(), content)
     else:
-        print("未配置 FEISHU_WEBHOOK_KEY 跳过微信推送")
+        print("未配置 FEISHU_WEBHOOK_KEY 跳过飞书推送")
