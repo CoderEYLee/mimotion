@@ -1,6 +1,14 @@
-/.idea/
+
+# idea
+.idea/
+
+# workbuddy
+.workbuddy/
+
 __pycache__/
 
 # 环境变量（含敏感信息，禁止提交）
 .env
 
+# macos
+.DS_Store

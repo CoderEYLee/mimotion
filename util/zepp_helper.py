@@ -1,4 +1,3 @@
-import json
 import re
 import time
 import traceback
@@ -138,7 +137,8 @@ def grant_login_tokens(access_token, device_id, is_phone=False) -> (str | None, 
         _app_token = resp["token_info"]["app_token"]
         _userid = resp["token_info"]["user_id"]
     except:
-        print("提取login_token失败：%s" % json.dumps(resp, ensure_ascii=False, indent=2))
+        # 安全：不打印原始响应（含 login_token/app_token），仅记录脱敏后的状态
+        print("提取login_token失败，接口未返回预期的 token_info（已脱敏，不打印敏感响应）")
     return _login_token, _app_token, _userid, None
 
 
@@ -150,8 +150,7 @@ def grant_app_token(login_token: str) -> (str | None, str | None):
     if resp.status_code != 200:
         return None, "请求异常：%d" % resp.status_code
     resp = resp.json()
-    print("grant_app_token: %s" % json.dumps(resp))
-
+    # 安全：不打印原始响应（含 app_token），仅记录脱敏后的状态
     result = resp.get("result")
     if result != "ok":
         error_code = resp.get("error_code")

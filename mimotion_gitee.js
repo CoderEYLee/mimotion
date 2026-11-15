@@ -814,7 +814,7 @@ async function pushResults(execResults, summary, config) {
  */
 function prepareUserTokens(dataPath, aesKey) {
   if (!fs.existsSync(dataPath)) {
-    console.log(`[Token] 缓存文件不存在, 跳过加载`);
+    console.log(`[Token] 未找到加密缓存文件 ${dataPath}，将使用账号密码登录`);
     return {};
   }
   try {
@@ -822,10 +822,10 @@ function prepareUserTokens(dataPath, aesKey) {
     const decrypted = decryptData(data, aesKey, null);
     const tokens = JSON.parse(decrypted.toString('utf-8'));
     const userCount = Object.keys(tokens).length;
-    console.log(`[Token] 缓存加载成功, 共 ${userCount} 个账号`);
+    console.log(`[Token] 已读取加密缓存文件 ${dataPath}，AES解密成功，共加载 ${userCount} 个账号的 token 缓存`);
     return tokens;
   } catch (e) {
-    console.log(`[Token] 缓存解密失败（密钥不正确或文件损坏）: ${e.message}`);
+    console.log(`[Token] 缓存解密失败（密钥不正确或文件损坏），放弃已保存的 token 缓存，将使用账号密码重新登录: ${e.message}`);
     return {};
   }
 }
@@ -842,7 +842,7 @@ function persistUserTokens(dataPath, userTokens, aesKey) {
   const originStr = JSON.stringify(userTokens);
   const cipherData = encryptData(Buffer.from(originStr, 'utf-8'), aesKey, null);
   fs.writeFileSync(dataPath, cipherData);
-  console.log(`[Token] 缓存已保存, ${userCount} 个账号, 文件大小=${cipherData.length} 字节`);
+  console.log(`[Token] 已将 ${userCount} 个账号的 token 加密写入缓存文件 ${dataPath}（使用 AES_KEY），文件大小=${cipherData.length} 字节`);
 }
 
 /**
@@ -981,6 +981,7 @@ class MiMotionRunner {
     const tokenInfo = this.userTokens[this.user];
 
     if (tokenInfo) {
+      this.logStr += '命中加密缓存(encrypted_tokens.data)：检测到本账号已保存的 token，尝试复用缓存登录\n';
       let accessToken = tokenInfo.access_token;
       let loginToken = tokenInfo.login_token;
       let appToken = tokenInfo.app_token;
@@ -990,22 +991,22 @@ class MiMotionRunner {
       // 第一级：检查 app_token 是否有效
       const [ok, msg] = await checkAppToken(appToken);
       if (ok) {
-        this.logStr += '使用缓存的 app_token\n';
+        this.logStr += '复用缓存的 app_token 登录成功（无需重新登录）\n';
         console.log(`[Runner] 缓存 app_token 有效，直接使用`);
         return appToken;
       }
-      this.logStr += `app_token 失效, last grant: ${tokenInfo.app_token_time}\n`;
+      this.logStr += `缓存的 app_token 已失效，尝试用缓存的 login_token 刷新, last grant: ${tokenInfo.app_token_time}\n`;
 
       // 第二级：用 login_token 刷新 app_token
       console.log(`[Runner] app_token 已失效，尝试 login_token 刷新`);
       const [newAppToken, msg2] = await grantAppToken(loginToken);
       if (newAppToken) {
-        this.logStr += '刷新 app_token 成功\n';
+        this.logStr += '使用缓存的 login_token 刷新 app_token 成功\n';
         tokenInfo.app_token = newAppToken;
         tokenInfo.app_token_time = getTime();
         return newAppToken;
       }
-      this.logStr += `login_token 失效, last grant: ${tokenInfo.login_token_time}\n`;
+      this.logStr += `缓存的 login_token 已失效，尝试用缓存的 access_token 重新获取, last grant: ${tokenInfo.login_token_time}\n`;
 
       // 第三级：用 access_token 重新获取所有 token
       console.log(`[Runner] login_token 已失效，尝试 access_token 重新获取`);
@@ -1017,16 +1018,18 @@ class MiMotionRunner {
         tokenInfo.login_token_time = getTime();
         tokenInfo.app_token_time = getTime();
         this.userId = userId;
+        this.logStr += '使用缓存的 access_token 重新获取 login_token/app_token 成功\n';
         console.log(`[Runner] access_token 重新获取成功`);
         return newAppToken2;
       }
-      this.logStr += `access_token 失效: ${msg3}, last grant: ${tokenInfo.access_token_time}\n`;
+      this.logStr += `缓存的 access_token 也已失效: ${msg3}, last grant: ${tokenInfo.access_token_time}\n`;
       console.log(`[Runner] 所有缓存 token 均已失效，重新登录`);
     } else {
       console.log(`[Runner] 无缓存，完整登录`);
     }
 
     // 没有缓存或全部失效，从头登录
+    this.logStr += '无可用缓存 token，使用账号密码(来自ZEPP_PASSWORD)重新登录\n';
     const [accessToken, errMsg] = await loginAccessToken(this.user, this.password);
     if (!accessToken) {
       this.logStr += `登录失败: ${errMsg}`;
@@ -1053,6 +1056,7 @@ class MiMotionRunner {
       device_id: this.deviceId,
     };
     this.userId = userId;
+    this.logStr += '账号密码登录成功，已生成新的 token 并写入内存缓存，稍后将在 persist 阶段加密写入 encrypted_tokens.data\n';
     console.log(`[Runner] 登录成功, userId=${userId}`);
     return appToken;
   }

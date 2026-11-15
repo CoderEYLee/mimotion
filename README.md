@@ -199,18 +199,52 @@
 - 当配置了 `AES_KEY` 之后，因为每个人的仓库里面到会保存一份 `encrypted_tokens.data`，更新代码会被覆盖。为了避免数据丢失，请提前备份，在更新完成后将它重新提交到仓库中，然后再触发workflow。
 - 同步更新后请自己再次仔细阅读README，配置项目修改等请自行对比，更新后因为配置不正确导致无法运行请不要找我
 
-### 八、忘记配置后的处理
+### 八、忘记配置后的处理（提取配置信息）
 
-- 当长时间没有使用或者忘记了配置，可以通过手动触发工作流来发送配置信息到企业微信通知中，或者telegram机器人，请务必配置在私有的企业微信或telegram群组中，避免密码等敏感信息泄露给别人
-- 步骤：
-  - 首先配置Secrets：`INSPECT_WECHAT_HOOK_KEY` 配置企业微信机器人的key，具体请参考企业微信机器人文档。
-  - telegram配置Secrets：`INSPECT_TELEGRAM_BOT_TOKEN`和`INSPECT_TELEGRAM_CHAT_ID` 配置机器人的token和聊天chatId，具体请参考TelegramBot文档。
-  - 然后点击Actions，左侧选择 `提取配置信息` 手动运行它，运行成功后，将配置信息发送到企业微信或telegram中。企业微信或者telegram的推送自己按需选择，如果都不配置，请使用日志打印的方式。
-- 如果没有企业微信或telegram，可以配置Secrets: `INSPECT_AES_KEY` 注意是16位的字符串，请勿使用弱密码，避免被人猜到。
-  - 在Secrets中配置后，运行上述的Actions，然后在执行结果中查看日志打印的base64字符串。
-  - 提取base64字符串后，可以使用在线AES加解密网站进行解密，加密方式为CBC，填充方式为PKCS7，密钥长度128bit，密钥和偏移量（iv）均为INSPECT_AES_KEY
-  - 可用网站：https://www.toolhelper.cn/SymmetricEncryption/AES
-- 以上两种方式都可以提取 CONFIG，PAT，AES_KEY 三个Secrets配置，请自行选择。
+- 当长时间没有使用或者忘记了配置，可以通过手动触发 `提取配置信息` 工作流，把仓库里的 `CONFIG` / `PAT` / `AES_KEY` 提取出来自查。
+- ⚠️ **安全提醒（重要）**：本仓库是**公开仓库**，GitHub Actions 日志**任何人可读**。因此该功能的敏感信息处理方式为：
+  - 明文配置（含账号**密码 `PWD`**、`AES_KEY`、`PAT`）**只会推送到你私有的飞书 / 企业微信 / Telegram 会话**，**绝不**打印到公开日志；
+  - 控制台（`开始` 步骤日志）只打印**加密后的 base64**（没有密钥无法解密），属于脱敏打印；
+  - 请把推送目标配置在**只有你自己可见**的私有会话中，收到后建议删除消息。
+  - 与此同时，仓库已对登录/token 打印做了脱敏：账号走脱敏显示、token 只打印长度/状态/时间、推送请求不打印含 token 的 URL 与正文，避免任何明文凭证出现在公开日志。
+
+- 支持以下 4 种回显方式，按需选用其一或组合：
+
+  **1) 飞书（推荐，本 fork 新增）**
+  - 若你刷步数已配置 `CONFIG.PUSH_FEISHU_WEBHOOK_KEY`（本仓库默认就是飞书推送），**无需额外配置**：提取工作流会自动复用它，把配置推到你平时收通知的飞书群。
+  - 若想推到另一个更私密的飞书机器人，单独配置 Secret：`INSPECT_FEISHU_WEBHOOK_KEY`（值为飞书 webhook 地址 `?key=` 后面那串），会优先于上面的复用。
+
+  **2) 企业微信**
+  - 配置 Secret：`INSPECT_WECHAT_HOOK_KEY`（企业微信机器人 key），具体请参考企业微信机器人文档。
+
+  **3) Telegram**
+  - 配置 Secrets：`INSPECT_TELEGRAM_BOT_TOKEN` 和 `INSPECT_TELEGRAM_CHAT_ID`（`chat_id` 必须是纯数字，不要填成 `@用户名` 或带空格）。
+  - 该渠道填写不正确只会在日志告警、不会让工作流失败。
+
+  **4) 控制台加密打印（最安全，不依赖第三方）**
+  - 配置 Secret：`INSPECT_AES_KEY`（**严格 16 位**字符串，请勿使用弱密码）。
+  - 运行后，在 `开始` 步骤日志中查看 base64 字符串，使用在线 AES 工具解密（CBC / PKCS7 / 128bit，key 与 iv 均为 INSPECT_AES_KEY）：
+    https://www.toolhelper.cn/SymmetricEncryption/AES
+
+- 配置好对应渠道后，点击 Actions → 左侧 `提取配置信息` → `Run workflow` 手动运行即可。
+
+### 九、清理历史 workflow runs
+
+- GitHub Actions 页面**没有批量删除入口**，要删只能逐个点击，run 数量多时非常麻烦。
+- 本仓库提供脚本 `scripts/clean_workflow_runs.sh`，通过 GitHub API **批量删除「N 天前」的历史 runs**（默认保留最近 7 天，天数由 `DAYS_AGO` 控制），避免公开仓库堆积大量历史记录。
+- 使用前需要准备一个 GitHub Personal Access Token（classic 的 `repo` 作用域，或 fine-grained 的 `Actions: Read and write`）。
+- 用法（在仓库根目录执行）：
+  ```shell
+  # 1) 预览将要删除的 run（默认 DRY_RUN=1，不会真正删除，只列出数量；默认保留最近 7 天）
+  TOKEN=ghp_xxx bash scripts/clean_workflow_runs.sh
+
+  # 2) 确认数量无误后，真正删除
+  TOKEN=ghp_xxx DRY_RUN=0 bash scripts/clean_workflow_runs.sh
+
+  # 3) 自定义保留天数（例如保留最近 30 天，删除 30 天前的历史）
+  TOKEN=ghp_xxx DAYS_AGO=30 bash scripts/clean_workflow_runs.sh
+  ```
+- 注意：删除操作**不可逆**，请务必先用预览模式核对数量；脚本不含任何密钥，可安全提交到公开仓库。可通过环境变量 `REPO` 覆盖默认仓库名（默认 `CoderEYLee/mimotion`），通过 `DAYS_AGO` 覆盖保留天数（默认 `7`，须为非负整数）。
 
 ## 注意事项
 

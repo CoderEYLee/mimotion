@@ -119,6 +119,7 @@ class MiMotionRunner:
     def login(self):
         user_token_info = user_tokens.get(self.user)
         if user_token_info is not None:
+            self.log_str += "命中加密缓存(encrypted_tokens.data)：检测到本账号已保存的 token，尝试复用缓存登录\n"
             access_token = user_token_info.get("access_token")
             login_token = user_token_info.get("login_token")
             app_token = user_token_info.get("app_token")
@@ -129,18 +130,18 @@ class MiMotionRunner:
                 user_token_info["device_id"] = self.device_id
             ok, msg = zeppHelper.check_app_token(app_token)
             if ok:
-                self.log_str += "使用加密保存的app_token\n"
+                self.log_str += "复用缓存的 app_token 登录成功（无需重新登录）\n"
                 return app_token
             else:
-                self.log_str += f"app_token失效 重新获取 last grant time: {user_token_info.get('app_token_time')}\n"
+                self.log_str += f"缓存的 app_token 已失效，尝试用缓存的 login_token 刷新 last grant time: {user_token_info.get('app_token_time')}\n"
                 # 检查login_token是否可用
                 app_token, msg = zeppHelper.grant_app_token(login_token)
                 if app_token is None:
-                    self.log_str += f"login_token 失效 重新获取 last grant time: {user_token_info.get('login_token_time')}\n"
+                    self.log_str += f"缓存的 login_token 已失效，尝试用缓存的 access_token 重新获取 last grant time: {user_token_info.get('login_token_time')}\n"
                     login_token, app_token, user_id, msg = zeppHelper.grant_login_tokens(access_token, self.device_id,
                                                                                          self.is_phone)
                     if login_token is None:
-                        self.log_str += f"access_token 已失效：{msg} last grant time:{user_token_info.get('access_token_time')}\n"
+                        self.log_str += f"缓存的 access_token 也已失效：{msg} last grant time:{user_token_info.get('access_token_time')}\n"
                     else:
                         user_token_info["login_token"] = login_token
                         user_token_info["app_token"] = app_token
@@ -148,14 +149,16 @@ class MiMotionRunner:
                         user_token_info["login_token_time"] = get_time()
                         user_token_info["app_token_time"] = get_time()
                         self.user_id = user_id
+                        self.log_str += "使用缓存的 access_token 重新获取 login_token/app_token 成功\n"
                         return app_token
                 else:
-                    self.log_str += "重新获取app_token成功\n"
+                    self.log_str += "使用缓存的 login_token 刷新 app_token 成功\n"
                     user_token_info["app_token"] = app_token
                     user_token_info["app_token_time"] = get_time()
                     return app_token
 
-        # access_token 失效 或者没有保存加密数据
+        # 缓存不可用（无缓存或各级 token 均失效），使用账号密码重新登录
+        self.log_str += "无可用缓存 token，使用账号密码(来自CONFIG的PWD)重新登录\n"
         access_token, msg = zeppHelper.login_access_token(self.user, self.password)
         if access_token is None:
             self.log_str += "登录获取accessToken失败：%s" % msg
@@ -180,6 +183,7 @@ class MiMotionRunner:
             self.device_id = uuid.uuid4()
         user_token_info["device_id"] = self.device_id
         user_tokens[self.user] = user_token_info
+        self.log_str += "账号密码登录成功，已生成新的 token 并写入内存缓存，稍后将在 persist 阶段加密写入 encrypted_tokens.data\n"
         return app_token
 
     # 主函数
@@ -302,11 +306,14 @@ def prepare_user_tokens() -> dict:
         try:
             decrypted_data = decrypt_data(data, aes_key, None)
             # 假设原始明文为 UTF-8 编码文本
-            return json.loads(decrypted_data.decode('utf-8', errors='strict'))
+            loaded = json.loads(decrypted_data.decode('utf-8', errors='strict'))
+            print(f"已读取加密缓存文件 {data_path}，AES解密成功，共加载 {len(loaded)} 个账号的 token 缓存")
+            return loaded
         except:
-            print("密钥不正确或者加密内容损坏 放弃token")
+            print("密钥不正确或者加密内容损坏，放弃已保存的 token 缓存，将使用账号密码重新登录")
             return dict()
     else:
+        print(f"未找到加密缓存文件 {data_path}，将使用账号密码登录")
         return dict()
 
 
@@ -318,6 +325,7 @@ def persist_user_tokens():
         f.write(cipher_data)
         f.flush()
         f.close()
+    print(f"已将 {len(user_tokens)} 个账号的 token 加密写入缓存文件 {data_path}（使用 AES_KEY）")
 
 
 if __name__ == "__main__":
