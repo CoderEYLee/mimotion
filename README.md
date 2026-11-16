@@ -230,12 +230,34 @@
 
 ### 九、清理历史 workflow runs
 
-- GitHub Actions 页面**没有批量删除入口**，要删只能逐个点击，run 数量多时非常麻烦。
-- 本仓库提供脚本 `scripts/clean_workflow_runs.sh`，通过 GitHub API **批量删除「N 天前」的历史 runs**（默认保留最近 7 天，天数由 `DAYS_AGO` 控制），避免公开仓库堆积大量历史记录。
+日常自动清理**直接用 GitHub 自带的保留期**（见下文），不需要脚本，也不需要任何定时任务。脚本只用于一次性清掉已有的历史存量。
+
+> 为什么不给脚本配定时任务：脚本若做成一个每天运行的 workflow，它自己每天会产生一条新 run，3 天后又被自己删掉，等于「自己造垃圾自己收」，Actions 页面还会一直留着这个清理任务的几条记录。所以定时清理交给 GitHub 原生能力，脚本只负责清存量。
+
+#### 一、日常自动清理：用 GitHub 自带保留期
+
+从 **2026 年 10 月 1 日** 起，GitHub Actions 的 **workflow run 记录**会跟随仓库的 Actions 保留期设置自动清理（此前 run 记录固定保留 400+ 天，只有日志和产物受保留期约束）。不需要脚本、不需要 PAT、不需要新建 workflow。
+
+设置步骤：
+
+1. 打开仓库 `Settings → Actions → General`。
+2. 找到 **Check, workflow run, status, artifact and log retention**，把天数改成 `3`（公开仓库可设 `1`–`90` 天，默认 `90` 天），点 `Save`。
+3. 之后 GitHub 会自动删除超过 3 天的 workflow runs，无需人工干预。
+
+注意：
+
+- 该设置**不追溯**：只影响设置之后新产生的 run，已经堆积的历史记录仍需用下面的脚本手动清一次。
+- 保留期同时作用于 **artifacts 和日志**，设成 3 天后它们也只保留 3 天；若希望日志留久些，把天数调大即可。
+- 天数上限受组织/企业策略约束，公开仓库最多 `90` 天。
+
+#### 二、一次性清理历史存量：用脚本
+
+`scripts/clean_workflow_runs.sh` 通过 GitHub API 批量删除「N 天前」的 runs（默认保留最近 3 天，天数由 `DAYS_AGO` 控制）。
+
 - 使用前需要准备一个 GitHub Personal Access Token（classic 的 `repo` 作用域，或 fine-grained 的 `Actions: Read and write`）。
 - 用法（在仓库根目录执行）：
   ```shell
-  # 1) 预览将要删除的 run（默认 DRY_RUN=1，不会真正删除，只列出数量；默认保留最近 7 天）
+  # 1) 预览将要删除的 run（默认 DRY_RUN=1，不会真正删除，只列出数量；默认保留最近 3 天）
   TOKEN=ghp_xxx bash scripts/clean_workflow_runs.sh
 
   # 2) 确认数量无误后，真正删除
@@ -244,7 +266,8 @@
   # 3) 自定义保留天数（例如保留最近 30 天，删除 30 天前的历史）
   TOKEN=ghp_xxx DAYS_AGO=30 bash scripts/clean_workflow_runs.sh
   ```
-- 注意：删除操作**不可逆**，请务必先用预览模式核对数量；脚本不含任何密钥，可安全提交到公开仓库。可通过环境变量 `REPO` 覆盖默认仓库名（默认 `CoderEYLee/mimotion`），通过 `DAYS_AGO` 覆盖保留天数（默认 `7`，须为非负整数）。
+- 注意：删除操作**不可逆**，请务必先用预览模式核对数量；脚本不含任何密钥，可安全提交到公开仓库。可通过环境变量 `REPO` 覆盖默认仓库名（默认 `CoderEYLee/mimotion`），通过 `DAYS_AGO` 覆盖保留天数（默认 `3`，须为非负整数）。
+- 脚本同时兼容 Linux（GNU date）与 macOS（BSD date），建议在**本地手动运行**，不要再给它配 Actions 定时任务。
 
 ## 注意事项
 

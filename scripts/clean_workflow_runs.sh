@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # 清理 CoderEYLee/mimotion 中「N 天前」的 workflow runs（通过 GitHub API 批量删除）
-# 保留最近 N 天，N 由 DAYS_AGO 控制，默认 7。
+# 保留最近 N 天，N 由 DAYS_AGO 控制，默认 3。
 #
 # 用法：
-#   预览(7天以前)：    TOKEN=ghp_xxx bash scripts/clean_workflow_runs.sh
-#   删除(7天以前)：    TOKEN=ghp_xxx DRY_RUN=0 bash scripts/clean_workflow_runs.sh
+#   预览(3天以前)：    TOKEN=ghp_xxx bash scripts/clean_workflow_runs.sh
+#   删除(3天以前)：    TOKEN=ghp_xxx DRY_RUN=0 bash scripts/clean_workflow_runs.sh
 
 #   预览(30天以前)：   TOKEN=ghp_xxx DAYS_AGO=30 bash scripts/clean_workflow_runs.sh
 #   删除(30天以前)：   TOKEN=ghp_xxx DAYS_AGO=30 DRY_RUN=0 bash scripts/clean_workflow_runs.sh
@@ -17,7 +17,7 @@ set -u
 REPO="${REPO:-CoderEYLee/mimotion}"
 TOKEN="${TOKEN:?请设置 TOKEN 环境变量，例如 TOKEN=ghp_xxx bash scripts/clean_workflow_runs.sh}"
 DRY_RUN="${DRY_RUN:-1}"
-DAYS_AGO="${DAYS_AGO:-7}"
+DAYS_AGO="${DAYS_AGO:-3}"
 
 # 校验 DAYS_AGO 为非负整数
 if ! [[ "$DAYS_AGO" =~ ^[0-9]+$ ]]; then
@@ -25,8 +25,14 @@ if ! [[ "$DAYS_AGO" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-# N 天前的 UTC 时间点（macOS BSD date 语法）
-cutoff=$(date -v-"$DAYS_AGO"d -u +%Y-%m-%dT%H:%M:%SZ)
+# N 天前的 UTC 时间点（兼容 macOS BSD date 与 Linux GNU date）
+# 注意：GitHub Actions 的 ubuntu-latest 使用 GNU date，不支持 -v 选项，
+# 若不做区分会导致 cutoff 为空、脚本看似成功却一条都不删。
+if date --version >/dev/null 2>&1; then
+  cutoff=$(date -u -d "$DAYS_AGO days ago" +%Y-%m-%dT%H:%M:%SZ)
+else
+  cutoff=$(date -v-"$DAYS_AGO"d -u +%Y-%m-%dT%H:%M:%SZ)
+fi
 
 if [ "$DRY_RUN" = "1" ]; then
   mode="预览(不会删除)"
