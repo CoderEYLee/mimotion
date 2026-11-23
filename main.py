@@ -258,11 +258,12 @@ def run_single_account(total, idx, account):
         log_str += f'{exec_msg}\n'
         exec_result = {"user": user_mi, "success": success,
                        "msg": exec_msg}
-    except:
-        log_str += f"执行异常:{traceback.format_exc()}\n"
-        log_str += traceback.format_exc()
+    except Exception as e:
+        tb = traceback.format_exc()
+        log_str += f"执行异常:{tb}\n"
+        # 完整堆栈只打到日志，推送里只给一行摘要
         exec_result = {"user": user_mi, "success": False,
-                       "msg": f"执行异常:{traceback.format_exc()}"}
+                       "msg": f"执行异常：{type(e).__name__}: {e}"}
     print(log_str)
     return exec_result
 

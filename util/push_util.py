@@ -42,6 +42,17 @@ def desensitize_user_name(user):
     return f'{user[:3]}****{user[-4:]}'
 
 
+
+def short_push_msg(msg, max_len=160):
+    """推送里只保留一行短摘要，完整堆栈不要发到飞书等通知"""
+    if msg is None:
+        return ""
+    first = str(msg).strip().splitlines()[0]
+    if len(first) > max_len:
+        return first[:max_len] + "…"
+    return first
+
+
 def display_user(user, config: 'PushConfig'):
     """根据推送配置决定是否脱敏展示账号"""
     if config.push_user_full_name is True:
@@ -281,13 +292,13 @@ def push_to_push_plus(exec_results, summary, config: PushConfig):
             for exec_result in exec_results:
                 user_display = display_user(exec_result["user"], config)
                 if exec_result.get('expired') is True:
-                    html += f'<li><span>账号：{user_display}</span>已过期，{exec_result["msg"]}</li>'
+                    html += f'<li><span>账号：{user_display}</span>已过期，{short_push_msg(exec_result["msg"])}</li>'
                     continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    html += f'<li><span>账号：{user_display}</span>刷步数成功，接口返回：{exec_result["msg"]}</li>'
+                    html += f'<li><span>账号：{user_display}</span>刷步数成功，接口返回：{short_push_msg(exec_result["msg"])}</li>'
                 else:
-                    html += f'<li><span>账号：{user_display}</span>刷步数失败，失败原因：{exec_result["msg"]}</li>'
+                    html += f'<li><span>账号：{user_display}</span>刷步数失败，失败原因：{short_push_msg(exec_result["msg"])}</li>'
             html += '</ul>'
         html += f'<div>{NOTIFY_SOURCE}</div>'
         push_plus(config.push_plus_token, NOTIFY_HEADING, html)
@@ -307,13 +318,13 @@ def push_to_wechat_webhook(exec_results, summary, config: PushConfig):
             for exec_result in exec_results:
                 user_display = display_user(exec_result["user"], config)
                 if exec_result.get('expired') is True:
-                    content += f'\n- 账号：{user_display}已过期，{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}已过期，{short_push_msg(exec_result["msg"])}'
                     continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{short_push_msg(exec_result["msg"])}'
                 else:
-                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{short_push_msg(exec_result["msg"])}'
         content = append_notify_source(content)
         push_wechat_webhook(config.push_wechat_webhook_key, notification_title(), content)
     else:
@@ -332,13 +343,13 @@ def push_to_telegram_bot(exec_results, summary, config: PushConfig):
             for exec_result in exec_results:
                 user_display = display_user(exec_result["user"], config)
                 if exec_result.get('expired') is True:
-                    html += f'<pre><blockquote>账号：{user_display}</blockquote>已过期，<b>{exec_result["msg"]}</b></pre>'
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>已过期，<b>{short_push_msg(exec_result["msg"])}</b></pre>'
                     continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数成功，接口返回：<b>{exec_result["msg"]}</b></pre>'
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数成功，接口返回：<b>{short_push_msg(exec_result["msg"])}</b></pre>'
                 else:
-                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数失败，失败原因：<b>{exec_result["msg"]}</b></pre>'
+                    html += f'<pre><blockquote>账号：{user_display}</blockquote>刷步数失败，失败原因：<b>{short_push_msg(exec_result["msg"])}</b></pre>'
         html = append_notify_source(html)
         push_telegram_bot(config.telegram_bot_token, config.telegram_chat_id, html)
     else:
@@ -356,13 +367,13 @@ def push_to_feishu_webhook(exec_results, summary, config: PushConfig):
             for exec_result in exec_results:
                 user_display = display_user(exec_result["user"], config)
                 if exec_result.get('expired') is True:
-                    content += f'\n- 账号：{user_display}已过期，{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}已过期，{short_push_msg(exec_result["msg"])}'
                     continue
                 success = exec_result['success']
                 if success is not None and success is True:
-                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数成功，接口返回：{short_push_msg(exec_result["msg"])}'
                 else:
-                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{exec_result["msg"]}'
+                    content += f'\n- 账号：{user_display}刷步数失败，失败原因：{short_push_msg(exec_result["msg"])}'
         content = append_notify_source(content)
         push_feishu_webhook(config.push_feishu_webhook_key, notification_title(), content)
     else:
